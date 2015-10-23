@@ -87,6 +87,8 @@ class RedisSessionStore < ActionDispatch::Session::AbstractStore
   end
 
   def get_session(env, sid)
+
+    Rails.logger.info("[SESSION] get_session #{sid}")
     unless sid && (session = load_session_from_redis(sid))
       sid = generate_sid
       session = {}
@@ -100,9 +102,11 @@ class RedisSessionStore < ActionDispatch::Session::AbstractStore
 
   def load_session_from_redis(sid)
     data = redis.get(prefixed(sid))
+    Rails.logger.info("[SESSION] load_session_from_redis data: #{data}")
     begin
       data ? decode(data) : nil
     rescue => e
+      Rails.logger.info("[SESSION] load_session_from_redis decoding error #{sid} #{data}")
       destroy_session_from_sid(sid, drop: true)
       on_session_load_error.call(e, sid) if on_session_load_error
       nil
@@ -115,6 +119,8 @@ class RedisSessionStore < ActionDispatch::Session::AbstractStore
 
   def set_session(env, sid, session_data, options = nil) # rubocop: disable MethodLength, LineLength
     expiry = (options || env.fetch(ENV_SESSION_OPTIONS_KEY))[:expire_after]
+
+    Rails.logger.info("[SESSION] set_session #{sid}, #{expiry}")
     if expiry
       redis.setex(prefixed(sid), expiry, encode(session_data))
     else
@@ -122,6 +128,7 @@ class RedisSessionStore < ActionDispatch::Session::AbstractStore
     end
     return sid
   rescue Errno::ECONNREFUSED, Redis::CannotConnectError => e
+    Rails.logger.info("[SESSION] set_session rescue #{env}, #{sid}, #{expiry}, #{e.inspect}")
     on_redis_down.call(e, env, sid) if on_redis_down
     return false
   end
@@ -137,6 +144,8 @@ class RedisSessionStore < ActionDispatch::Session::AbstractStore
   def destroy(env)
     if env['rack.request.cookie_hash'] &&
        (sid = env['rack.request.cookie_hash'][key])
+
+      Rails.logger.info("[SESSION] destroy #{sid}")
       destroy_session_from_sid(sid, drop: true, env: env)
     end
     false
@@ -146,6 +155,7 @@ class RedisSessionStore < ActionDispatch::Session::AbstractStore
     redis.del(prefixed(sid))
     (options || {})[:drop] ? nil : generate_sid
   rescue Errno::ECONNREFUSED, Redis::CannotConnectError => e
+    Rails.logger.info("[SESSION] destroy_session_from_sid resue #{sid}, #{e.inspect}")
     on_redis_down.call(e, options[:env] || {}, sid) if on_redis_down
   end
 
